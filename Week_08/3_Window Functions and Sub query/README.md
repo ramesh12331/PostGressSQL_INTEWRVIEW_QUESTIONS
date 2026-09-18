@@ -1,0 +1,895 @@
+# 🪟 Window Functions + Subqueries — Beginner Mock Interview
+
+Based on the **19-08-2026 SQL – Window Functions and Subquery** notes you shared, here is a **beginner-friendly mock interview revision**.
+
+---
+
+# Part 1: Window Functions
+
+## 1. What is a Window Function?
+
+**Answer:**
+A window function performs a calculation across related rows **without combining those rows into one row**.
+
+### Example
+
+```sql
+SELECT *,
+       SUM(price) OVER(PARTITION BY product_category) AS category_total
+FROM product;
+```
+
+👉 Each product row remains visible, but the category total is added.
+
+### 🧠 Remember
+
+> **GROUP BY → reduces rows**
+> **Window Function → keeps rows**
+
+---
+
+# 2. What is `OVER()`?
+
+**Answer:**
+`OVER()` tells SQL that a function should work as a **window function**.
+
+```sql
+SUM(price) OVER(...)
+```
+
+Without `OVER()`:
+
+```sql
+SUM(price)
+```
+
+With `OVER()`:
+
+```sql
+SUM(price) OVER(PARTITION BY product_category)
+```
+
+---
+
+# 3. What is `PARTITION BY`?
+
+**Answer:**
+`PARTITION BY` divides the data into groups for the window calculation.
+
+```sql
+SUM(price) OVER(
+    PARTITION BY product_category
+)
+```
+
+If categories are:
+
+```text
+Phones
+Laptops
+TV
+```
+
+SQL calculates the total separately for each category.
+
+### 🧠 Trick
+
+> **PARTITION BY = Separate groups, but don't remove rows**
+
+---
+
+# 4. What is `FIRST_VALUE()`?
+
+**Answer:**
+`FIRST_VALUE()` returns the first value from the specified window according to the ordering.
+
+From your notes:
+
+```sql
+SELECT *,
+       FIRST_VALUE(brand) OVER(
+           PARTITION BY product_category
+           ORDER BY price DESC
+       ) AS first_val
+FROM product;
+```
+
+Here:
+
+```text
+PARTITION BY product_category
+```
+
+means category-wise.
+
+```text
+ORDER BY price DESC
+```
+
+means highest price first.
+
+Therefore, `FIRST_VALUE(brand)` gives the brand associated with the **highest-priced product in each category**.
+
+### 🧠 Trick
+
+> `FIRST_VALUE()` → **First row's value**
+
+---
+
+# 5. What is `LAST_VALUE()`?
+
+**Answer:**
+`LAST_VALUE()` returns the last value within the current window frame.
+
+Example:
+
+```sql
+SELECT *,
+       LAST_VALUE(brand) OVER(
+           PARTITION BY product_category
+           ORDER BY price DESC
+       ) AS last_val
+FROM product;
+```
+
+But there is an important point: **the window frame affects `LAST_VALUE()`**.
+
+---
+
+# 6. Why does `LAST_VALUE()` sometimes give unexpected results?
+
+Because the default window frame can end at the **current row**.
+
+For example:
+
+```sql
+LAST_VALUE(brand) OVER(
+    PARTITION BY product_category
+    ORDER BY price DESC
+    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+)
+```
+
+Meaning:
+
+```text
+Start of group → Current row
+```
+
+So `LAST_VALUE()` can return the value from the **current row**, rather than the actual last row of the entire category.
+
+---
+
+# 7. How do you get the actual last value?
+
+Use:
+
+```sql
+ROWS BETWEEN UNBOUNDED PRECEDING
+         AND UNBOUNDED FOLLOWING
+```
+
+Example:
+
+```sql
+SELECT *,
+       LAST_VALUE(brand) OVER(
+           PARTITION BY product_category
+           ORDER BY price DESC
+           ROWS BETWEEN UNBOUNDED PRECEDING
+                    AND UNBOUNDED FOLLOWING
+       ) AS last_val
+FROM product;
+```
+
+### 🧠 Very Important
+
+```text
+UNBOUNDED PRECEDING → Start
+CURRENT ROW          → Current row
+UNBOUNDED FOLLOWING  → End
+```
+
+---
+
+# 8. What is `NTH_VALUE()`?
+
+**Answer:**
+`NTH_VALUE()` returns the value from the **Nth row** of the window.
+
+Your example:
+
+```sql
+SELECT *,
+       NTH_VALUE(product_name, 2) OVER(
+           PARTITION BY product_category
+           ORDER BY price DESC
+           ROWS BETWEEN UNBOUNDED PRECEDING
+                    AND UNBOUNDED FOLLOWING
+       ) AS expensive_product
+FROM product;
+```
+
+Here:
+
+```text
+2 → second row
+```
+
+Because price is ordered:
+
+```sql
+ORDER BY price DESC
+```
+
+the second row represents the **second-highest-priced product** in each category.
+
+### 🧠 Trick
+
+> `NTH_VALUE(column, 2)` → **2nd value**
+
+---
+
+# 9. What is `NTILE()`?
+
+**Answer:**
+`NTILE()` divides rows into a specified number of buckets/groups.
+
+Example:
+
+```sql
+SELECT *,
+       NTILE(5) OVER(
+           ORDER BY price DESC
+       )
+FROM product;
+```
+
+This divides the products into **5 buckets** based on price.
+
+### 🧠 Trick
+
+> `NTILE(5)` → **Divide rows into 5 buckets**
+
+---
+
+# 10. How can `NTILE()` classify products?
+
+Your notes use:
+
+```sql
+SELECT *,
+       CASE
+           WHEN x.bucketss = 1 THEN 'high products'
+           WHEN x.bucketss = 2 THEN 'moderate'
+           ELSE 'low'
+       END AS status
+FROM
+(
+    SELECT *,
+           NTILE(3) OVER(
+               ORDER BY price DESC
+           ) AS bucketss
+    FROM product
+) x;
+```
+
+### Logic
+
+```text
+Bucket 1 → High products
+Bucket 2 → Moderate
+Bucket 3 → Low
+```
+
+---
+
+# 11. Why is a subquery used with `NTILE()` here?
+
+Because `bucketss` is generated by the window function.
+
+First:
+
+```sql
+NTILE(3) OVER(...) AS bucketss
+```
+
+Then the outer query can use:
+
+```sql
+CASE
+    WHEN bucketss = 1 ...
+```
+
+### 🧠 Pattern
+
+```text
+Inner Query
+     ↓
+Calculate bucket
+     ↓
+Outer Query
+     ↓
+Use bucket
+```
+
+---
+
+# 12. How do you get only LOW products?
+
+Your notes use:
+
+```sql
+SELECT *
+FROM
+(
+    SELECT *,
+           CASE
+               WHEN x.bucketss = 1 THEN 'high products'
+               WHEN x.bucketss = 2 THEN 'moderate'
+               ELSE 'low'
+           END AS status
+    FROM
+    (
+        SELECT *,
+               NTILE(3) OVER(
+                   ORDER BY price DESC
+               ) AS bucketss
+        FROM product
+    ) x
+) z
+WHERE z.status = 'low';
+```
+
+### Logic
+
+```text
+product
+   ↓
+NTILE(3)
+   ↓
+bucketss
+   ↓
+CASE
+   ↓
+status
+   ↓
+WHERE status = 'low'
+```
+
+---
+
+# 13. What is `CUME_DIST()`?
+
+**Answer:**
+`CUME_DIST()` calculates the **cumulative distribution** of a row within the ordered result.
+
+Example:
+
+```sql
+SELECT *,
+       CUME_DIST() OVER(
+           ORDER BY price DESC
+       ) AS cume_distt
+FROM product;
+```
+
+It returns a value between:
+
+```text
+0 and 1
+```
+
+It can also be converted to a percentage.
+
+---
+
+# 14. How do you convert `CUME_DIST()` into percentage?
+
+Your query:
+
+```sql
+SELECT *,
+       CUME_DIST() OVER(
+           ORDER BY price DESC
+       ) AS cume_distt,
+
+       ROUND(
+           (
+               CUME_DIST() OVER(
+                   ORDER BY price DESC
+               ) * 100
+           )::numeric,
+           2
+       ) AS cume_dist_percentage
+FROM product;
+```
+
+### Formula
+
+```text
+CUME_DIST × 100 = Percentage
+```
+
+Example:
+
+```text
+0.25 × 100 = 25%
+```
+
+---
+
+# 15. What is `PERCENT_RANK()`?
+
+**Answer:**
+`PERCENT_RANK()` calculates the relative rank of a row as a percentage-like value between **0 and 1**.
+
+Example:
+
+```sql
+SELECT *,
+       PERCENT_RANK() OVER(
+           ORDER BY price DESC
+       ) AS per_rankk
+FROM product;
+```
+
+### 🧠 Difference
+
+| Function         | Purpose                 |
+| ---------------- | ----------------------- |
+| `CUME_DIST()`    | Cumulative distribution |
+| `PERCENT_RANK()` | Relative rank           |
+
+---
+
+# ⭐ Window Functions Summary
+
+| Function         | Easy Meaning             |
+| ---------------- | ------------------------ |
+| `FIRST_VALUE()`  | First value              |
+| `LAST_VALUE()`   | Last value               |
+| `NTH_VALUE()`    | Nth value                |
+| `NTILE()`        | Divide rows into buckets |
+| `CUME_DIST()`    | Cumulative distribution  |
+| `PERCENT_RANK()` | Relative percentage rank |
+| `ROW_NUMBER()`   | Unique row number        |
+| `RANK()`         | Rank with gaps           |
+| `DENSE_RANK()`   | Rank without gaps        |
+| `LAG()`          | Previous row             |
+| `LEAD()`         | Next row                 |
+
+---
+
+# Part 2: Subqueries
+
+## 16. What is a Subquery?
+
+**Answer:**
+A subquery is a **query written inside another query**.
+
+Example:
+
+```sql
+SELECT *
+FROM emp1
+WHERE sal = (
+    SELECT MAX(sal)
+    FROM emp1
+);
+```
+
+The inner query:
+
+```sql
+SELECT MAX(sal)
+FROM emp1;
+```
+
+finds the maximum salary.
+
+The outer query finds the employee having that salary.
+
+### 🧠 Trick
+
+> **Query inside query = Subquery**
+
+---
+
+# 17. Why do we use Subqueries?
+
+A subquery is useful when the result of one query is needed by another query.
+
+Example:
+
+```text
+Find average salary
+       ↓
+Use average salary
+       ↓
+Find employees earning above average
+```
+
+---
+
+# 18. Explain the department subquery example.
+
+First:
+
+```sql
+SELECT deptno
+FROM dept
+WHERE dname = 'SALES';
+```
+
+Result:
+
+```text
+30
+```
+
+Then:
+
+```sql
+SELECT *
+FROM emp1
+WHERE deptno = 30;
+```
+
+We combine both:
+
+```sql
+SELECT *
+FROM emp1
+WHERE deptno = (
+    SELECT deptno
+    FROM dept
+    WHERE dname = 'SALES'
+);
+```
+
+### Logic
+
+```text
+Inner query
+    ↓
+Find SALES department number
+    ↓
+30
+    ↓
+Outer query
+    ↓
+Find employees where deptno = 30
+```
+
+---
+
+# 19. How do you find the employee with the highest salary?
+
+Subquery:
+
+```sql
+SELECT *
+FROM emp1
+WHERE sal = (
+    SELECT MAX(sal)
+    FROM emp1
+);
+```
+
+### Inner query
+
+```sql
+SELECT MAX(sal)
+FROM emp1;
+```
+
+Result:
+
+```text
+9000
+```
+
+Outer query:
+
+```sql
+WHERE sal = 9000
+```
+
+So employees earning `9000` are returned.
+
+---
+
+# 20. How do you find employees earning more than average salary?
+
+```sql
+SELECT *
+FROM emp1
+WHERE sal > (
+    SELECT AVG(sal)
+    FROM emp1
+);
+```
+
+### Logic
+
+```text
+AVG(sal)
+   ↓
+Calculate average salary
+   ↓
+WHERE sal > average
+   ↓
+Return employees
+```
+
+---
+
+# 21. How do you find employees earning less than average?
+
+```sql
+SELECT *
+FROM emp1
+WHERE sal < (
+    SELECT AVG(sal)
+    FROM emp1
+);
+```
+
+### 🧠 Interview answer
+
+> I use a subquery to calculate the average salary first, then the outer query filters employees whose salary is less than that average.
+
+---
+
+# 22. How do you find the employee with minimum salary?
+
+```sql
+SELECT *
+FROM emp1
+WHERE sal = (
+    SELECT MIN(sal)
+    FROM emp1
+);
+```
+
+Inner query:
+
+```sql
+SELECT MIN(sal)
+FROM emp1;
+```
+
+Result:
+
+```text
+805
+```
+
+Outer query finds:
+
+```sql
+WHERE sal = 805
+```
+
+---
+
+# ⭐ Subquery Pattern
+
+### Maximum
+
+```sql
+SELECT *
+FROM emp1
+WHERE sal = (
+    SELECT MAX(sal)
+    FROM emp1
+);
+```
+
+### Minimum
+
+```sql
+SELECT *
+FROM emp1
+WHERE sal = (
+    SELECT MIN(sal)
+    FROM emp1
+);
+```
+
+### Greater than average
+
+```sql
+SELECT *
+FROM emp1
+WHERE sal > (
+    SELECT AVG(sal)
+    FROM emp1
+);
+```
+
+### Less than average
+
+```sql
+SELECT *
+FROM emp1
+WHERE sal < (
+    SELECT AVG(sal)
+    FROM emp1
+);
+```
+
+---
+
+# 🔥 Window Function vs Subquery
+
+This is a **very important interview question**.
+
+| Window Function                           | Subquery                                            |
+| ----------------------------------------- | --------------------------------------------------- |
+| Performs calculation across rows          | Query inside another query                          |
+| Usually keeps original rows               | Outer query uses inner result                       |
+| Uses `OVER()`                             | Uses `(...)`                                        |
+| Useful for ranking, previous/next, totals | Useful when one query's result is needed by another |
+| `ROW_NUMBER()`, `RANK()`, `LAG()`         | `MAX()`, `MIN()`, `AVG()` inside another query      |
+
+---
+
+# 🔥 GROUP BY vs Window Function vs Subquery
+
+| Requirement                                  | Common approach    |
+| -------------------------------------------- | ------------------ |
+| Total salary by department                   | `GROUP BY`         |
+| Show department total on every employee row  | Window Function    |
+| Find employees earning above company average | Subquery           |
+| Rank employees                               | Window Function    |
+| Find highest salary                          | Aggregate/Subquery |
+| Find second employee per department          | Window Function    |
+| Get previous employee salary                 | `LAG()`            |
+| Divide products into price groups            | `NTILE()`          |
+
+---
+
+# 🎯 Interview Business Questions
+
+| Interview Question                   | Keyword / Concept      |
+| ------------------------------------ | ---------------------- |
+| Find first product in each category  | `FIRST_VALUE()`        |
+| Find last product in each category   | `LAST_VALUE()` + frame |
+| Find second product in each category | `NTH_VALUE()`          |
+| Divide products into 3 groups        | `NTILE(3)`             |
+| Find high/moderate/low products      | `NTILE()` + `CASE`     |
+| Find cumulative distribution         | `CUME_DIST()`          |
+| Find relative rank                   | `PERCENT_RANK()`       |
+| Find highest-paid employee           | `MAX()` + Subquery     |
+| Find lowest-paid employee            | `MIN()` + Subquery     |
+| Find employees above average         | `AVG()` + Subquery     |
+| Find employees below average         | `AVG()` + Subquery     |
+| Find employees in SALES department   | Subquery               |
+
+---
+
+# 🧠 Must Remember for Saturday
+
+### Window Functions
+
+```text
+OVER()
+   ↓
+Window definition
+
+PARTITION BY
+   ↓
+Separate groups
+
+ORDER BY
+   ↓
+Order rows
+
+FIRST_VALUE
+   ↓
+First
+
+LAST_VALUE
+   ↓
+Last
+
+NTH_VALUE
+   ↓
+Nth
+
+NTILE
+   ↓
+Buckets
+
+CUME_DIST
+   ↓
+Cumulative distribution
+
+PERCENT_RANK
+   ↓
+Relative rank
+```
+
+### Subquery
+
+```text
+SUBQUERY
+   ↓
+Query inside query
+```
+
+Golden pattern:
+
+```sql
+SELECT *
+FROM table
+WHERE column operator
+(
+    SELECT ...
+    FROM ...
+);
+```
+
+---
+
+# 🎤 20 Most Important Mock Interview Questions
+
+|  # | Interview Question                                | Short Answer                                                                |
+| -: | ------------------------------------------------- | --------------------------------------------------------------------------- |
+|  1 | What is a window function?                        | It performs calculations across related rows while keeping individual rows. |
+|  2 | What is `OVER()`?                                 | It defines the window for a window function.                                |
+|  3 | What is `PARTITION BY`?                           | It divides rows into groups for calculation.                                |
+|  4 | `GROUP BY` vs `PARTITION BY`?                     | GROUP BY reduces rows; PARTITION BY keeps rows.                             |
+|  5 | What is `FIRST_VALUE()`?                          | Returns the first value in the window.                                      |
+|  6 | What is `LAST_VALUE()`?                           | Returns the last value within the window frame.                             |
+|  7 | Why is window frame important for `LAST_VALUE()`? | It determines which rows are considered part of the window.                 |
+|  8 | What does `UNBOUNDED PRECEDING` mean?             | Start of the window.                                                        |
+|  9 | What does `UNBOUNDED FOLLOWING` mean?             | End of the window.                                                          |
+| 10 | What is `NTH_VALUE()`?                            | Returns the value from the Nth row.                                         |
+| 11 | What is `NTILE()`?                                | Divides rows into a specified number of buckets.                            |
+| 12 | What is `CUME_DIST()`?                            | Calculates cumulative distribution.                                         |
+| 13 | What is `PERCENT_RANK()`?                         | Calculates relative rank.                                                   |
+| 14 | What is a subquery?                               | A query inside another query.                                               |
+| 15 | Why use a subquery?                               | To use the result of one query in another query.                            |
+| 16 | Find highest salary?                              | `MAX()` inside a subquery.                                                  |
+| 17 | Find lowest salary?                               | `MIN()` inside a subquery.                                                  |
+| 18 | Find employees above average?                     | `AVG()` inside a subquery with `>`.                                         |
+| 19 | Find employees below average?                     | `AVG()` inside a subquery with `<`.                                         |
+| 20 | How do you find SALES employees using subquery?   | First find SALES `deptno`, then use it in the outer query.                  |
+
+---
+
+## 🏆 Golden Memory Table
+
+| If interviewer says... | Think...           |
+| ---------------------- | ------------------ |
+| **First**              | `FIRST_VALUE()`    |
+| **Last**               | `LAST_VALUE()`     |
+| **Nth**                | `NTH_VALUE()`      |
+| **Divide into groups** | `NTILE()`          |
+| **Cumulative**         | `CUME_DIST()`      |
+| **Relative rank**      | `PERCENT_RANK()`   |
+| **Query inside query** | Subquery           |
+| **Highest salary**     | `MAX()` + Subquery |
+| **Lowest salary**      | `MIN()` + Subquery |
+| **Above average**      | `AVG()` + `>`      |
+| **Below average**      | `AVG()` + `<`      |
+| **Keep original rows** | Window Function    |
+| **Reduce/group rows**  | `GROUP BY`         |
+
+### ⭐ One-line formula
+
+```text
+WINDOW FUNCTION
+= FUNCTION() OVER(PARTITION BY ... ORDER BY ...)
+```
+
+```text
+SUBQUERY
+= Outer Query + (Inner Query)
+```
+
+**For your mock interview, the most important concepts from this topic are:**
+`OVER()` → `PARTITION BY` → `ORDER BY` → Window Frame → `FIRST_VALUE()` → `LAST_VALUE()` → `NTH_VALUE()` → `NTILE()` → `CUME_DIST()` → `PERCENT_RANK()` → **Subquery with `MAX`, `MIN`, `AVG`**.
